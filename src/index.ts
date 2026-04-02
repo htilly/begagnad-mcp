@@ -453,12 +453,68 @@ export class BegagnadMCP extends McpAgent {
   }
 }
 
+// Throttle rapid SSE reconnections per IP within a Worker instance
+const lastSSEConnect = new Map<string, number>();
+const SSE_MIN_INTERVAL_MS = 10_000;
+
 export default {
-  fetch(request: Request, env: Env, ctx: ExecutionContext) {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
 
     if (url.pathname === "/sse" || url.pathname === "/sse/message") {
-      return BegagnadMCP.serveSSE("/sse").fetch(request, env, ctx);
+      // Rate-limit new SSE connections to prevent reconnection storms
+      if (request.method === "GET" && url.pathname === "/sse") {
+        const ip = request.headers.get("cf-connecting-ip") || "unknown";
+        const now = Date.now();
+        const last = lastSSEConnect.get(ip) || 0;
+        if (now - last < SSE_MIN_INTERVAL_MS) {
+          return new Response("Too many reconnections", {
+            status: 429,
+            headers: { "Retry-After": "10" },
+          });
+        }
+        lastSSEConnect.set(ip, now);
+      }
+
+      const response = await BegagnadMCP.serveSSE("/sse").fetch(
+        request,
+        env,
+        ctx,
+      );
+
+      // Inject a retry directive into the SSE stream so clients wait
+      // 30 seconds before reconnecting instead of retrying immediately
+      if (
+        request.method === "GET" &&
+        url.pathname === "/sse" &&
+        response.body &&
+        response.headers.get("content-type")?.includes("text/event-stream")
+      ) {
+        const reader = response.body.getReader();
+        const encoder = new TextEncoder();
+
+        const wrappedStream = new ReadableStream({
+          async start(controller) {
+            controller.enqueue(encoder.encode("retry: 30000\n\n"));
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                controller.enqueue(value);
+              }
+            } finally {
+              controller.close();
+            }
+          },
+        });
+
+        return new Response(wrappedStream, {
+          status: response.status,
+          headers: response.headers,
+        });
+      }
+
+      return response;
     }
 
     if (url.pathname === "/mcp") {
