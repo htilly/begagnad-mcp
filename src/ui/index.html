@@ -359,8 +359,8 @@
       document.getElementById('claude-config').textContent = JSON.stringify({
         mcpServers: {
           begagnad: {
-            type: 'streamableHttp',
-            url: mcpUrl
+            command: 'npx',
+            args: ['mcp-remote', sseUrl, '--allow-http']
           }
         }
       }, null, 2);
