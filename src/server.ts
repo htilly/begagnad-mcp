@@ -282,7 +282,30 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // --- MCP SSE endpoint (legacy, for mcp-remote) ---
+  // --- MCP SSE endpoint ---
+  // Handle POST to /sse as streamable HTTP (mcp-remote http-first strategy)
+  // Only if the client sends a JSON body (MCP), not a browser form
+  if (url.pathname === "/sse" && req.method === "POST" && req.headers["content-type"]?.includes("application/json")) {
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+    const session = sessionId ? sessions.get(sessionId) : undefined;
+    if (session) {
+      await (session.transport as StreamableHTTPServerTransport).handleRequest(req, res);
+    } else {
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (sid) => {
+          sessions.set(sid, { transport, ip: clientIp, connectedAt: Date.now(), type: "http" });
+          stats.totalConnections++;
+        },
+        onsessionclosed: (sid) => { sessions.delete(sid); },
+      });
+      const mcpServer = createMcpServer();
+      await mcpServer.connect(transport);
+      await transport.handleRequest(req, res);
+    }
+    return;
+  }
+
   if (url.pathname === "/sse" && req.method === "GET") {
     const transport = new SSEServerTransport("/sse/message", res);
     sessions.set(transport.sessionId, { transport, ip: clientIp, connectedAt: Date.now(), type: "sse" });
@@ -399,17 +422,6 @@ const server = http.createServer(async (req, res) => {
   // --- WebUI ---
   if (url.pathname === "/" || url.pathname === "/index.html") {
     serveFile(res, path.join(__dirname, "ui/index.html"), "text/html; charset=utf-8");
-    return;
-  }
-
-  // Root JSON info for programmatic clients
-  if (req.headers.accept?.includes("application/json")) {
-    json(res, 200, {
-      name: "Begagnad MCP Server",
-      description: "Search Swedish second-hand marketplaces (Blocket & Tradera)",
-      endpoints: { sse: "/sse", "sse-message": "/sse/message" },
-      tools: ["search_blocket", "get_blocket_item", "search_tradera", "get_tradera_item", "search_both"],
-    });
     return;
   }
 
