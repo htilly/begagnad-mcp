@@ -1,0 +1,11 @@
+services:
+  begagnad-mcp:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/data
+    environment:
+      - TRADERA_APP_ID=${TRADERA_APP_ID:-}
+      - TRADERA_APP_KEY=${TRADERA_APP_KEY:-}
+    restart: unless-stopped
