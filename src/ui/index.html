@@ -30,6 +30,8 @@
     .stat-dot.up { background: #22c55e; }
     .stat-dot.down { background: #ef4444; }
     .stat-dot.unknown { background: #94a3b8; }
+    .stat-dot.ratelimit { background: #f59e0b; }
+    .rate-badge { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 4px; background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; white-space: nowrap; }
     .stat-label { font-weight: 500; }
     .stat-count { color: #94a3b8; }
     .stat-sep { color: #e2e8f0; }
@@ -145,12 +147,14 @@
           <span id="blocket-dot" class="stat-dot unknown"></span>
           <span class="stat-label">Blocket</span>
           <span id="blocket-calls" class="stat-count"></span>
+          <span id="blocket-ratelimit" class="rate-badge hidden" title="">rate limited</span>
         </div>
         <span class="stat-sep">|</span>
         <div class="stat-pill">
           <span id="tradera-dot" class="stat-dot unknown"></span>
           <span class="stat-label">Tradera</span>
           <span id="tradera-calls" class="stat-count"></span>
+          <span id="tradera-ratelimit" class="rate-badge hidden" title="">rate limited</span>
         </div>
         <span class="stat-sep">|</span>
         <div class="stat-pill">
@@ -303,16 +307,36 @@
         }
 
         // Status bar
+        const blocketRateLimited = stats.blocket.lastStatus === 429;
         const blocketDot = document.getElementById('blocket-dot');
-        blocketDot.className = 'stat-dot ' + (stats.blocket.lastStatus === null ? 'unknown' : stats.blocket.up ? 'up' : 'down');
-        blocketDot.title = stats.blocket.lastStatus ? `HTTP ${stats.blocket.lastStatus}` : 'Not checked yet';
+        blocketDot.className = 'stat-dot ' + (stats.blocket.lastStatus === null ? 'unknown' : blocketRateLimited ? 'ratelimit' : stats.blocket.up ? 'up' : 'down');
+        blocketDot.title = blocketRateLimited ? 'Rate limited (HTTP 429)' : stats.blocket.lastStatus ? `HTTP ${stats.blocket.lastStatus}` : 'Not checked yet';
         document.getElementById('blocket-calls').textContent = stats.blocket.calls ? `${stats.blocket.calls} calls` : '';
+        const blocketRlBadge = document.getElementById('blocket-ratelimit');
+        blocketRlBadge.classList.toggle('hidden', !blocketRateLimited);
 
+        const traderaRl = stats.tradera.rateLimit;
+        const traderaApiLimited = stats.tradera.lastStatus === 429;
+        const traderaLocalLimited = traderaRl && traderaRl.remaining === 0;
+        const traderaRateLimited = traderaApiLimited || traderaLocalLimited;
         const traderaLabel = stats.tradera.configured ? '' : ' (no keys)';
         const traderaDot = document.getElementById('tradera-dot');
-        traderaDot.className = 'stat-dot ' + (!stats.tradera.configured ? 'unknown' : stats.tradera.up ? 'up' : 'down');
-        traderaDot.title = !stats.tradera.configured ? 'API keys not configured' : stats.tradera.lastStatus ? `HTTP ${stats.tradera.lastStatus}` : 'Not checked yet';
+        traderaDot.className = 'stat-dot ' + (!stats.tradera.configured ? 'unknown' : traderaRateLimited ? 'ratelimit' : stats.tradera.up ? 'up' : 'down');
+        let traderaDotTitle = !stats.tradera.configured ? 'API keys not configured' : stats.tradera.lastStatus ? `HTTP ${stats.tradera.lastStatus}` : 'Not checked yet';
+        if (traderaRateLimited && traderaRl?.resetAt) {
+          const resetIn = Math.ceil((new Date(traderaRl.resetAt) - Date.now()) / 60000);
+          traderaDotTitle = `Rate limited — resets in ${resetIn}m (${traderaRl.used}/${traderaRl.limit} calls used)`;
+        } else if (traderaApiLimited) {
+          traderaDotTitle = 'Rate limited by Tradera (HTTP 429)';
+        }
+        traderaDot.title = traderaDotTitle;
         document.getElementById('tradera-calls').textContent = (stats.tradera.calls ? `${stats.tradera.calls} calls` : '') + traderaLabel;
+        const traderaRlBadge = document.getElementById('tradera-ratelimit');
+        traderaRlBadge.classList.toggle('hidden', !traderaRateLimited);
+        if (traderaRateLimited && traderaRl?.resetAt) {
+          const resetIn = Math.ceil((new Date(traderaRl.resetAt) - Date.now()) / 60000);
+          traderaRlBadge.title = `${traderaRl.used}/${traderaRl.limit} calls — resets in ${resetIn}m`;
+        }
 
         document.getElementById('active-clients').textContent = stats.connections.active;
         document.getElementById('total-connections').textContent = stats.connections.total;
