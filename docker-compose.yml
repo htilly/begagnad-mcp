@@ -1,6 +1,9 @@
 services:
   begagnad-mcp:
-    build: .
+    build:
+      context: https://github.com/htilly/begagnad-mcp.git#main
+      args:
+        SOURCE: github
     ports:
       - "3000:3000"
     volumes:
