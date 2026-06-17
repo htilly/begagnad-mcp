@@ -420,12 +420,32 @@ const server = http.createServer(async (req, res) => {
       let items: unknown[] = [];
 
       if (source === "blocket" || source === "both") {
-        const r = await searchBlocket(query, limit || 10);
-        items = [...items, ...r];
+        stats.blocket.calls++;
+        try {
+          const r = await searchBlocket(query, limit || 10);
+          items = [...items, ...r];
+          stats.blocket.ok++;
+          stats.blocket.lastStatus = 200;
+          stats.blocket.lastChecked = Date.now();
+        } catch (e) {
+          stats.blocket.lastStatus = extractHttpStatus(e) ?? stats.blocket.lastStatus;
+          stats.blocket.lastChecked = Date.now();
+          throw e;
+        }
       }
       if ((source === "tradera" || source === "both") && env.TRADERA_APP_ID && env.TRADERA_APP_KEY) {
-        const r = await searchTradera(query, env, 1);
-        items = [...items, ...r];
+        stats.tradera.calls++;
+        try {
+          const r = await searchTradera(query, env, 1);
+          items = [...items, ...r];
+          stats.tradera.ok++;
+          stats.tradera.lastStatus = 200;
+          stats.tradera.lastChecked = Date.now();
+        } catch (e) {
+          stats.tradera.lastStatus = extractHttpStatus(e) ?? stats.tradera.lastStatus;
+          stats.tradera.lastChecked = Date.now();
+          throw e;
+        }
       }
 
       json(res, 200, { count: items.length, items });
