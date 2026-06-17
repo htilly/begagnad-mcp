@@ -72,6 +72,15 @@ export TRADERA_APP_KEY=your_app_key
 docker compose up --build
 ```
 
+Optional Tradera rate-limit overrides:
+
+```bash
+export TRADERA_RATE_LIMIT_MAX_CALLS=100
+export TRADERA_RATE_LIMIT_WINDOW_MS=86400000
+export TRADERA_HEALTH_CHECK_INTERVAL_MS=86400000
+export TRADERA_RATE_LIMIT_STATE_PATH=/data/tradera-rate-limit.json
+```
+
 Notes:
 
 - The `./data` directory is mounted into the container as `/data`.
@@ -183,6 +192,19 @@ Example local config file:
 ```
 
 If no Tradera credentials are present, the server still works for Blocket-only searches.
+
+### Tradera Rate Limit
+
+Tradera documents a default API limit of `100` calls per `24` hours and returns `HTTP 429` when it is exceeded. The server enforces that limit locally for all Tradera calls, including search, item lookup, and health checks.
+
+Defaults:
+
+- `TRADERA_RATE_LIMIT_MAX_CALLS=100`
+- `TRADERA_RATE_LIMIT_WINDOW_MS=86400000`
+- `TRADERA_HEALTH_CHECK_INTERVAL_MS=86400000`
+- `TRADERA_RATE_LIMIT_STATE_PATH=/data/tradera-rate-limit.json` for the local Node server
+
+If Tradera grants a higher quota, set the corresponding environment variables before starting the server or container.
 
 ## Available Tools
 

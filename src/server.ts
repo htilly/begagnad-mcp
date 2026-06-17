@@ -13,11 +13,42 @@ import {
   getBlocketItem,
   searchTradera,
   getTraderaItem,
+  checkTraderaConnectivity,
+  configureTraderaRateLimitStore,
+  getTraderaRateLimitState,
 } from "./core.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = process.env.CONFIG_PATH || "/data/config.json";
+const TRADERA_RATE_LIMIT_STATE_PATH = process.env.TRADERA_RATE_LIMIT_STATE_PATH
+  || path.join(path.dirname(CONFIG_PATH), "tradera-rate-limit.json");
 const PORT = parseInt(process.env.PORT || "3000", 10);
+const TRADERA_HEALTH_CHECK_INTERVAL_MS = parsePositiveInt(
+  process.env.TRADERA_HEALTH_CHECK_INTERVAL_MS,
+  24 * 60 * 60 * 1000,
+);
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+configureTraderaRateLimitStore({
+  load: () => {
+    try {
+      const raw = fs.readFileSync(TRADERA_RATE_LIMIT_STATE_PATH, "utf8");
+      const parsed = JSON.parse(raw) as { timestamps?: unknown[] };
+      return (parsed.timestamps || []).filter((value): value is number => typeof value === "number");
+    } catch {
+      return [];
+    }
+  },
+  save: (timestamps) => {
+    fs.mkdirSync(path.dirname(TRADERA_RATE_LIMIT_STATE_PATH), { recursive: true });
+    fs.writeFileSync(TRADERA_RATE_LIMIT_STATE_PATH, JSON.stringify({ timestamps }, null, 2));
+  },
+});
 
 // Config management — env vars take precedence, WebUI saves override
 function loadConfig(): Env {
@@ -31,6 +62,8 @@ function loadConfig(): Env {
   return {
     TRADERA_APP_ID: process.env.TRADERA_APP_ID || fileConfig.TRADERA_APP_ID || "",
     TRADERA_APP_KEY: process.env.TRADERA_APP_KEY || fileConfig.TRADERA_APP_KEY || "",
+    TRADERA_RATE_LIMIT_MAX_CALLS: process.env.TRADERA_RATE_LIMIT_MAX_CALLS,
+    TRADERA_RATE_LIMIT_WINDOW_MS: process.env.TRADERA_RATE_LIMIT_WINDOW_MS,
   };
 }
 
@@ -195,12 +228,14 @@ async function checkConnectivity() {
   // Tradera — only if keys are configured
   const env = loadConfig();
   if (env.TRADERA_APP_ID && env.TRADERA_APP_KEY) {
+    if (
+      stats.tradera.lastChecked > 0
+      && Date.now() - stats.tradera.lastChecked < TRADERA_HEALTH_CHECK_INTERVAL_MS
+    ) {
+      return;
+    }
     try {
-      const r = await fetch(
-        `https://api.tradera.com/v3/searchservice.asmx/Search?query=test&categoryId=0&pageNumber=1&orderBy=Relevance&appId=${env.TRADERA_APP_ID}&appKey=${env.TRADERA_APP_KEY}`,
-        { signal: AbortSignal.timeout(5000) },
-      );
-      stats.tradera.lastStatus = r.status;
+      stats.tradera.lastStatus = await checkTraderaConnectivity(env, { signal: AbortSignal.timeout(5000) });
     } catch {
       stats.tradera.lastStatus = 0;
     }
@@ -395,6 +430,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === "/api/stats" && req.method === "GET") {
+    const env = loadConfig();
     json(res, 200, {
       blocket: {
         up: stats.blocket.lastStatus !== null && (stats.blocket.lastStatus === 422 || (stats.blocket.lastStatus >= 200 && stats.blocket.lastStatus < 400)),
@@ -404,12 +440,13 @@ const server = http.createServer(async (req, res) => {
         ok: stats.blocket.ok,
       },
       tradera: {
-        configured: !!(loadConfig().TRADERA_APP_ID && loadConfig().TRADERA_APP_KEY),
+        configured: !!(env.TRADERA_APP_ID && env.TRADERA_APP_KEY),
         up: stats.tradera.lastStatus !== null && stats.tradera.lastStatus >= 200 && stats.tradera.lastStatus < 400,
         lastStatus: stats.tradera.lastStatus,
         lastChecked: stats.tradera.lastChecked,
         calls: stats.tradera.calls,
         ok: stats.tradera.ok,
+        rateLimit: getTraderaRateLimitState(env),
       },
       connections: {
         active: sessions.size,

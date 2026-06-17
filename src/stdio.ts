@@ -10,14 +10,34 @@ import {
   getBlocketItem,
   searchTradera,
   getTraderaItem,
+  configureTraderaRateLimitStore,
 } from "./core.js";
 
 // Config: check common locations so it works both with and without Docker
+const USER_CONFIG_PATH = path.join(os.homedir(), ".config", "begagnad-mcp", "config.json");
 const CONFIG_CANDIDATES = [
   process.env.CONFIG_PATH,
   "/data/config.json",
-  path.join(os.homedir(), ".config", "begagnad-mcp", "config.json"),
+  USER_CONFIG_PATH,
 ].filter(Boolean) as string[];
+const RATE_LIMIT_STATE_PATH = process.env.TRADERA_RATE_LIMIT_STATE_PATH
+  || path.join(path.dirname(process.env.CONFIG_PATH || USER_CONFIG_PATH), "tradera-rate-limit.json");
+
+configureTraderaRateLimitStore({
+  load: () => {
+    try {
+      const raw = fs.readFileSync(RATE_LIMIT_STATE_PATH, "utf8");
+      const parsed = JSON.parse(raw) as { timestamps?: unknown[] };
+      return (parsed.timestamps || []).filter((value): value is number => typeof value === "number");
+    } catch {
+      return [];
+    }
+  },
+  save: (timestamps) => {
+    fs.mkdirSync(path.dirname(RATE_LIMIT_STATE_PATH), { recursive: true });
+    fs.writeFileSync(RATE_LIMIT_STATE_PATH, JSON.stringify({ timestamps }, null, 2));
+  },
+});
 
 function loadConfig(): Env {
   let fileConfig: Partial<Env> = {};
@@ -32,6 +52,8 @@ function loadConfig(): Env {
   return {
     TRADERA_APP_ID: process.env.TRADERA_APP_ID || fileConfig.TRADERA_APP_ID || "",
     TRADERA_APP_KEY: process.env.TRADERA_APP_KEY || fileConfig.TRADERA_APP_KEY || "",
+    TRADERA_RATE_LIMIT_MAX_CALLS: process.env.TRADERA_RATE_LIMIT_MAX_CALLS,
+    TRADERA_RATE_LIMIT_WINDOW_MS: process.env.TRADERA_RATE_LIMIT_WINDOW_MS,
   };
 }
 
