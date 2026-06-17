@@ -1,18 +1,146 @@
 # Begagnad MCP
 
-A Model Context Protocol (MCP) server for searching Sweden's two largest second-hand marketplaces: Blocket and Tradera.
+MCP server for searching Swedish second-hand marketplaces through a single interface.
 
-## What it does
+It currently supports:
 
-Enables AI agents like Claude to search and retrieve listings from Swedish second-hand marketplaces. Returns unified data including titles, descriptions, prices, images, seller information, and direct links to listings.
+- `Blocket`
+- `Tradera` when API credentials are configured
 
-## Setup
+The repo contains two runtime modes:
 
-### Using the public endpoint
+- A local Node server with Web UI, SSE, and Streamable HTTP endpoints
+- A Cloudflare Worker version for remote deployment
 
-A live instance is available at `https://begagnad-mcp.bjesus.workers.dev/sse`
+## Features
 
-Configure Claude Desktop by editing `~/.config/Claude/claude_desktop_config.json`:
+- Unified search tools for Blocket and Tradera
+- Local Web UI for setup, health, and test searches
+- MCP over `SSE` and Streamable HTTP
+- Docker-friendly local deployment
+- Optional stdio mode for containerized MCP clients
+
+## Quick Start
+
+### Docker Without Cloning
+
+Build the image directly from GitHub:
+
+```bash
+docker build https://github.com/htilly/begagnad-mcp.git -t begagnad-mcp
+docker run --rm -p 3000:3000 -v begagnad-mcp-data:/data begagnad-mcp
+```
+
+Then open:
+
+- Web UI: `http://localhost:3000/`
+- SSE endpoint: `http://localhost:3000/sse`
+- Streamable HTTP endpoint: `http://localhost:3000/mcp`
+
+With Tradera credentials:
+
+```bash
+docker run --rm -p 3000:3000 -v begagnad-mcp-data:/data \
+  -e TRADERA_APP_ID=your_app_id \
+  -e TRADERA_APP_KEY=your_app_key \
+  begagnad-mcp
+```
+
+### Docker Compose
+
+From a checkout of this repo:
+
+```bash
+docker compose up --build
+```
+
+`docker-compose.yml` uses the Dockerfile default build mode, which clones `https://github.com/htilly/begagnad-mcp.git` inside the build stage. To build from the current checkout instead, override the build arg:
+
+```bash
+docker compose build --build-arg SOURCE=local
+docker compose up
+```
+
+Tradera credentials can be supplied either:
+
+- In the Web UI under `Settings`
+- As environment variables in your shell before `docker compose up`
+
+```bash
+export TRADERA_APP_ID=your_app_id
+export TRADERA_APP_KEY=your_app_key
+docker compose up --build
+```
+
+Notes:
+
+- The `./data` directory is mounted into the container as `/data`.
+- Saved Web UI credentials are written to `/data/config.json`.
+
+### Docker Stdio Mode
+
+If you want to run the container as a stdio MCP server instead of the local web server:
+
+```bash
+docker build https://github.com/htilly/begagnad-mcp.git -t begagnad-mcp
+docker run --rm -i \
+  -e MCP_STDIO=1 \
+  -e TRADERA_APP_ID=your_app_id \
+  -e TRADERA_APP_KEY=your_app_key \
+  begagnad-mcp
+```
+
+## Local Development
+
+### Local Node Server
+
+The Node server is the runtime that serves the Web UI and local MCP endpoints:
+
+```bash
+npm ci
+npm run build:node
+npm run start:node
+```
+
+Available locally:
+
+- Web UI: `http://localhost:3000/`
+- SSE endpoint: `http://localhost:3000/sse`
+- Streamable HTTP endpoint: `http://localhost:3000/mcp`
+
+### Cloudflare Worker Dev Mode
+
+The Worker entrypoint is still available for Worker-focused development:
+
+```bash
+npm ci
+npm start
+```
+
+That runs `wrangler dev` on the Worker, typically on `http://localhost:8788/`.
+
+Use this mode when you are working on the Cloudflare deployment path, not when you need the local Node Web UI.
+
+## Claude Desktop Setup
+
+### Connect To The Local SSE Endpoint
+
+```json
+{
+  "mcpServers": {
+    "begagnad": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "http://localhost:3000/sse",
+        "--allow-http"
+      ]
+    }
+  }
+}
+```
+
+### Connect To A Deployed Endpoint
 
 ```json
 {
@@ -28,79 +156,108 @@ Configure Claude Desktop by editing `~/.config/Claude/claude_desktop_config.json
 }
 ```
 
-Restart Claude Desktop to load the server.
+Restart Claude Desktop after updating the config.
 
-### Deploy your own instance
+## Configuration
 
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
+### Tradera Credentials
 
-2. Login to Cloudflare:
-   ```bash
-   wrangler login
-   ```
+Tradera tools require:
 
-3. Deploy:
-   ```bash
-   npm run deploy
-   ```
+- `TRADERA_APP_ID`
+- `TRADERA_APP_KEY`
 
-4. Update your Claude Desktop config with your deployment URL.
+Supported configuration paths:
 
-### Local development
+- Environment variables
+- Web UI settings saved to `/data/config.json`
+- `~/.config/begagnad-mcp/config.json` for stdio mode outside Docker
 
-```bash
-npm start
+Example local config file:
+
+```json
+{
+  "TRADERA_APP_ID": "your_app_id",
+  "TRADERA_APP_KEY": "your_app_key"
+}
 ```
 
-Server runs at `http://localhost:8788/sse`
+If no Tradera credentials are present, the server still works for Blocket-only searches.
 
-### Configuration
+## Available Tools
 
-Tradera API credentials can be set as Cloudflare secrets:
+### `search_blocket`
+
+Search Blocket listings.
+
+Parameters:
+
+- `query`: search string
+- `limit`: optional result limit, default `20`
+
+### `get_blocket_item`
+
+Fetch a single Blocket listing by ad ID.
+
+Parameters:
+
+- `ad_id`: Blocket ad ID
+
+### `search_tradera`
+
+Search Tradera listings.
+
+Parameters:
+
+- `query`: search string
+- `page`: optional page number, default `1`
+
+### `get_tradera_item`
+
+Fetch a single Tradera listing by item ID.
+
+Parameters:
+
+- `item_id`: Tradera item ID
+
+### `search_both`
+
+Search both marketplaces in one call.
+
+Parameters:
+
+- `query`: search string
+- `blocket_limit`: optional Blocket limit, default `20`
+
+## Web UI
+
+The local Web UI exposes:
+
+- Connection snippets for Claude Desktop
+- SSE and Streamable HTTP endpoint URLs
+- Connected client/session status
+- Blocket and Tradera health checks
+- A browser-based test search flow
+- Tradera credential management
+
+## Deploying To Cloudflare
+
+```bash
+npm ci
+wrangler login
+npm run deploy
+```
+
+After deployment, use the returned `/sse` endpoint with your MCP client.
+
+You can also configure secrets directly in Cloudflare:
 
 ```bash
 wrangler secret put TRADERA_APP_ID
 wrangler secret put TRADERA_APP_KEY
 ```
 
-## Available tools
-
-- `search_blocket` - Search Blocket marketplace
-  - Parameters: `query` (string), `limit` (number, optional)
-  
-- `get_blocket_item` - Get details for a specific Blocket listing
-  - Parameters: `ad_id` (string)
-  
-- `search_tradera` - Search Tradera marketplace
-  - Parameters: `query` (string), `page` (number, optional)
-  
-- `get_tradera_item` - Get details for a specific Tradera listing
-  - Parameters: `item_id` (string)
-  
-- `search_both` - Search both marketplaces simultaneously
-  - Parameters: `query` (string), `blocket_limit` (number, optional)
-
-## Example usage
-
-Ask Claude:
-- "Find me a Linksys router with OpenWRT installed"
-- "Search for a red pickup truck under 20000 SEK"
-- "Show me vintage furniture in Stockholm"
-
-## Data format
-
-Returns unified data structure:
-- Item ID, title, description
-- Price (SEK), location
-- Images (URLs)
-- Seller name and rating
-- Direct link to listing
-- Source marketplace (Blocket or Tradera)
-
-## APIs
+## API Sources
 
 - Blocket API: `https://blocket-api.se/v1/`
 - Tradera API: `https://api.tradera.com/v3/`
