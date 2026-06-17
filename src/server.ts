@@ -97,8 +97,12 @@ function createMcpServer() {
       try {
         const items = await searchBlocket(query, limit);
         stats.blocket.ok++;
+        stats.blocket.lastStatus = 200;
+        stats.blocket.lastChecked = Date.now();
         return { content: [{ type: "text", text: JSON.stringify({ count: items.length, items }, null, 2) }] };
       } catch (error) {
+        stats.blocket.lastStatus = extractHttpStatus(error) ?? stats.blocket.lastStatus;
+        stats.blocket.lastChecked = Date.now();
         return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
       }
     },
@@ -112,8 +116,12 @@ function createMcpServer() {
       try {
         const item = await getBlocketItem(ad_id);
         stats.blocket.ok++;
+        stats.blocket.lastStatus = 200;
+        stats.blocket.lastChecked = Date.now();
         return { content: [{ type: "text", text: JSON.stringify(item, null, 2) }] };
       } catch (error) {
+        stats.blocket.lastStatus = extractHttpStatus(error) ?? stats.blocket.lastStatus;
+        stats.blocket.lastChecked = Date.now();
         return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
       }
     },
@@ -134,8 +142,12 @@ function createMcpServer() {
       try {
         const items = await searchTradera(query, env, page);
         stats.tradera.ok++;
+        stats.tradera.lastStatus = 200;
+        stats.tradera.lastChecked = Date.now();
         return { content: [{ type: "text", text: JSON.stringify({ count: items.length, items }, null, 2) }] };
       } catch (error) {
+        stats.tradera.lastStatus = extractHttpStatus(error) ?? stats.tradera.lastStatus;
+        stats.tradera.lastChecked = Date.now();
         return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
       }
     },
@@ -153,8 +165,12 @@ function createMcpServer() {
       try {
         const item = await getTraderaItem(item_id, env);
         stats.tradera.ok++;
+        stats.tradera.lastStatus = 200;
+        stats.tradera.lastChecked = Date.now();
         return { content: [{ type: "text", text: JSON.stringify(item, null, 2) }] };
       } catch (error) {
+        stats.tradera.lastStatus = extractHttpStatus(error) ?? stats.tradera.lastStatus;
+        stats.tradera.lastChecked = Date.now();
         return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
       }
     },
@@ -180,8 +196,8 @@ function createMcpServer() {
 
         const blocketItems = results[0].status === "fulfilled" ? results[0].value : [];
         const traderaItems = results[1].status === "fulfilled" ? results[1].value : [];
-        if (results[0].status === "fulfilled") stats.blocket.ok++;
-        if (results[1].status === "fulfilled" && (results[1].value as unknown[]).length >= 0) stats.tradera.ok++;
+        if (results[0].status === "fulfilled") { stats.blocket.ok++; stats.blocket.lastStatus = 200; stats.blocket.lastChecked = Date.now(); }
+        if (results[1].status === "fulfilled" && (results[1].value as unknown[]).length >= 0) { stats.tradera.ok++; stats.tradera.lastStatus = 200; stats.tradera.lastChecked = Date.now(); }
         const allItems = [...blocketItems, ...traderaItems];
 
         return {
@@ -207,6 +223,12 @@ interface SessionInfo {
   type: "sse" | "http";
 }
 const sessions = new Map<string, SessionInfo>();
+
+function extractHttpStatus(error: unknown): number | null {
+  const msg = error instanceof Error ? error.message : String(error);
+  const m = msg.match(/HTTP (\d{3})/);
+  return m ? parseInt(m[1], 10) : null;
+}
 
 // Counters for API calls and connectivity
 const stats = {
