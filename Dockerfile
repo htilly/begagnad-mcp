@@ -7,6 +7,7 @@ ARG SOURCE=github
 FROM node:22-alpine AS builder-github
 WORKDIR /app
 RUN apk add --no-cache git
+ARG CACHEBUST=1
 RUN git clone https://github.com/htilly/begagnad-mcp.git .
 RUN npm ci
 RUN npm run build:node
