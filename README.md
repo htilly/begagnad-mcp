@@ -231,6 +231,8 @@ Parameters:
 
 ## Web UI
 
+![Begagnad MCP Web UI](docs/screenshots/webui-connect.png)
+
 The local Web UI exposes:
 
 - Connection snippets for Claude Desktop
