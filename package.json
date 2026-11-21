@@ -24,17 +24,17 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.19.1",
-    "agents": "^0.2.8",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "agents": "^0.2.35",
     "xml2js": "^0.6.2",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250110.0",
     "@types/node": "^22.10.2",
     "@types/xml2js": "^0.4.14",
     "typescript": "^5.9.3",
-    "wrangler": "^4.42.0"
+    "wrangler": "^4.166.0"
   },
   "type": "module"
 }
